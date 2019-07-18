@@ -1,0 +1,7 @@
+numpy
+torch
+sklearn
+tokenizer
+nltk==3.2.1
+tqdm
+allennlp
