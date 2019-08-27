@@ -40,13 +40,13 @@ def gen_nn_inputs(root_node):
     #_clear_indices(root_node)
     #x, leaf_labels = _get_leaf_vals(root_node)
     #X_word, X_index = _get_leaf_vals(root_node)
-    tree = [[0, root_node.idx]] 
+    tree = [[0, root_node.idx]]
     #X_word, X_index = [ini_word], [ini_index]
     #X_word, X_index = [root_node.word], [root_node.index]
     #print X_index
     #print X_word
     #exit(0)
-    internal_tree  = _get_tree_path(root_node)
+    internal_tree = _get_tree_path(root_node)
     #print internal_tree
     #assert all(v is not None for v in x)
     #if not only_leaves_have_vals:
@@ -74,10 +74,10 @@ def gen_nn_inputs(root_node):
     #print X_word    
     #print type(X_word)
     #print(type(tree))
-    return (np.array(tree), dtype='float32')
+    return (np.array(tree, dtype='int32'))
     #return (np.array(X_word),
     #        np.array(X_index),
-    #        np.array(tree))        
+    #        np.array(tree))
 
 def _get_tree_path(root_node):
     """Get computation order of leaves -> root."""
@@ -129,7 +129,7 @@ class RvNN(object):
     state computed at the root.
 
     """
-    def __init__(self, word_dim, hidden_dim=5, Nclass=4,
+    def __init__(self, word_dim, hidden_dim=5, Nclass=3,
                 degree=2, momentum=0.9,
                  trainable_embeddings=True,
                  labels_on_nonroot_nodes=False,
@@ -147,17 +147,18 @@ class RvNN(object):
 
         #self.x = T.ivector(name='x')  # word indices
         #self.x_word = T.matrix(dtype=theano.config.floatX)  # word frequendtype=theano.config.floatX
-        self.x_word = T.matrix(name='x_word')  # word frequent
-        self.x_index = T.imatrix(name='x_index')  # word indices
+        #self.x_word = T.matrix(name='x_word')  # word frequent
+        #self.x_index = T.imatrix(name='x_index')  # word indices
         self.tree = T.imatrix(name='tree')  # shape [None, self.degree]
         self.y = T.ivector(name='y')  # output shape [self.output_dim]
         self.num_parent = T.iscalar(name='num_parent')
-        self.num_nodes = self.x_word.shape[0]  # total number of nodes (leaves + internal) in tree
+        self.num_nodes = 0  # total number of nodes (leaves + internal) in tree
         self.num_child = self.num_nodes - self.num_parent-1
         #emb_x = self.embeddings[self.x]
         #emb_x = emb_x * T.neq(self.x, -1).dimshuffle(0, 'x')  # zero-out non-existent embeddings
 
-        self.tree_states = self.compute_tree(self.x_word, self.x_index, self.num_parent, self.tree)
+        #self.tree_states = self.compute_tree(self.x_word, self.x_index, self.num_parent, self.tree)
+        self.tree_states = self.compute_tree(self.num_parent, self.tree)
         #self.final_state = self.tree_states.mean(axis=0)#self.tree_states[-1]
         #self.final_state = pool_2d(input=self.tree_states, ds=(self.num_child,1), ignore_border=True,mode='max')
         self.final_state = self.tree_states.max(axis=0)
@@ -167,7 +168,8 @@ class RvNN(object):
 
         self.learning_rate = T.scalar('learning_rate')
         #updates = self.gradient_descent(self.loss, self.learning_rate)
-        train_inputs = [self.x_word, self.x_index, self.num_parent, self.tree, self.y, self.learning_rate]
+        #train_inputs = [self.x_word, self.x_index, self.num_parent, self.tree, self.y, self.learning_rate]
+        train_inputs = [self.num_parent, self.tree, self.y, self.learning_rate]
         updates = self.gradient_descent(self.loss)
 
         #train_inputs = [self.x_word, self.x_index, self.tree, self.y]
@@ -175,14 +177,15 @@ class RvNN(object):
                                       [self.loss, self.pred_y],
                                       updates=updates)
 
-        self._evaluate = theano.function([self.x_word, self.x_index, self.num_parent, self.tree], self.final_state)
-        self._evaluate2 = theano.function([self.x_word, self.x_index, self.num_parent, self.tree], self.tree_states)
+        self._evaluate = theano.function([self.num_parent, self.tree], self.final_state)
+        self._evaluate2 = theano.function([self.num_parent, self.tree], self.tree_states)
         #self._state = theano.function([self.x_word, self.x_index, self.num_child, self.tree], self.tree_states)
 
-        self._predict = theano.function([self.x_word, self.x_index, self.num_parent, self.tree], self.pred_y)
+        #self._predict = theano.function([self.x_word, self.x_index, self.num_parent, self.tree], self.pred_y)
+        self._predict = theano.function([self.num_parent, self.tree], self.pred_y)
         
-        self.tree_states_test = self.compute_tree_test(self.x_word, self.x_index, self.tree)
-        self._evaluate3 = theano.function([self.x_word, self.x_index, self.tree], self.tree_states_test)
+        self.tree_states_test = self.compute_tree_test(self.tree)
+        self._evaluate3 = theano.function([self.tree], self.tree_states_test)
 
     '''def _check_input(self, x, tree):
         assert np.array_equal(tree[:, -1], np.arange(len(x) - len(tree), len(x)))
@@ -201,19 +204,28 @@ class RvNN(object):
         return self._train(x_word, x_index, tree[:, :-1], y)
         #return self.train_step_inner(x, tree, y)'''
     
-    def train_step_up(self, x_word, x_index, num_parent, tree, y, lr):
+    #def train_step_up(self, x_word, x_index, num_parent, tree, y, lr):
         #x_word, x_index, tree = gen_nn_inputs(root_node, max_degree=self.degree, only_leaves_have_vals=False)
-        return self._train(x_word, x_index, num_parent, tree, y, lr)
+    #    return self._train(x_word, x_index, num_parent, tree, y, lr)
+        
+    def train_step_up(self, num_parent, tree, y, lr):
+        #x_word, x_index, tree = gen_nn_inputs(root_node, max_degree=self.degree, only_leaves_have_vals=False)
+        return self._train(num_parent, tree, y, lr)
         
     def evaluate(self,  x_word, x_index, num_parent, tree):
         #x, tree = gen_nn_inputs(root_node, max_degree=self.degree, only_leaves_have_vals=False)
         #self._check_input(x, tree)
         return self._evaluate(x_word, x_index, num_parent, tree)
 
-    def predict_up(self, x_word, x_index, num_parent, tree):
+    #def predict_up(self, x_word, x_index, num_parent, tree):
         #x, tree = gen_nn_inputs(root_node, max_degree=self.degree, only_leaves_have_vals=False)
         #self._check_input(x, tree)
-        return self._predict(x_word, x_index, num_parent, tree)
+    #    return self._predict(x_word, x_index, num_parent, tree)
+        
+    def predict_up(self, num_parent, tree):
+        #x, tree = gen_nn_inputs(root_node, max_degree=self.degree, only_leaves_have_vals=False)
+        #self._check_input(x, tree)
+        return self._predict(num_parent, tree)    
 
     def init_matrix(self, shape):
         return np.random.normal(scale=0.1, size=shape).astype(theano.config.floatX)
@@ -269,7 +281,7 @@ class RvNN(object):
             return self.recursive_unit( leaf_word, leaf_index, dummy, dummy.sum(axis=1))
         return unit'''
 
-    def compute_tree(self, x_word, x_index, num_parent, tree):
+    def compute_tree(num_parent, tree):
         self.recursive_unit = self.create_recursive_unit()
         #num_nodes = self.num_nodes+1
         def ini_unit(x):
@@ -297,9 +309,9 @@ class RvNN(object):
             init_node_h = leaf_h'''
 
         # use recurrence to compute internal node hidden states
-        def _recurrence(x_word, x_index, node_info, node_h, last_h):
+        def _recurrence(node_info, node_h, last_h):
             parent_h = node_h[node_info[0]]
-            child_h = self.recursive_unit(x_word, x_index, parent_h)
+            child_h = self.recursive_unit(parent_h)
             #node_h[node_info[1]] = child_h
             node_h = T.concatenate([node_h[:node_info[1]],
                                     child_h.reshape([1, self.hidden_dim]),
@@ -329,7 +341,7 @@ class RvNN(object):
         return T.concatenate([leaf_h, parent_h], axis=0)'''
         return child_hs[num_parent-1:]
 
-    def compute_tree_test(self, x_word, x_index, tree):
+    def compute_tree_test(self, tree):
         self.recursive_unit = self.create_recursive_unit()
         def ini_unit(x):
             return theano.shared(self.init_vector([self.hidden_dim]))

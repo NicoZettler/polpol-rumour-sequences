@@ -174,7 +174,7 @@ class RvNN(object):
         #train_inputs = [self.x_word, self.x_index, self.tree, self.y]
         self._train = theano.function(train_inputs,
                                       [self.loss, self.pred_y],
-                                      updates=updates)
+                                      updates=updates, exception_verbosity=high)
 
         self._evaluate = theano.function([self.x_word, self.x_index, self.num_parent, self.tree], self.final_state)
         self._evaluate2 = theano.function([self.x_word, self.x_index, self.num_parent, self.tree], self.tree_states)
