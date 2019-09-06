@@ -105,6 +105,62 @@ def find_parent_node(tree_branch: Dict, reply_idx: int) -> int: # go recursively
             if parent_node is not None: # return the value only if it exists (otherwise we should add try and catch later)
                 return parent_node
 
+import nltk
+nltk.download('punkt')
+from nltk.tokenize import word_tokenize
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+stop_words = stopwords.words("english")
+#print(len(stop_words))
+stop_words.extend([":", ",", ".", "#", "@", "-", "(", ")", ";", "&", "'"])
+#print(len(stop_words))
+#print(stop_words)
+from nltk.stem import PorterStemmer
+ps = PorterStemmer()
+
+# removes unimportant constructs, tokenizes and stems a (str) post and turns it into a list of (str) words
+def preprocess_words(raw_post: str) -> list:
+    post_words = []
+    for word in raw_post.split():
+        if not word.startswith('@') and not word.startswith('http'): # remove mentions and URLs
+            post_words.append(word)
+        elif word.startswith('http'):
+            post_words.append('http') # for each link put http such that URLs can be identified for the indexing
+    clean_post = ' '.join(post_words) # put post back together
+    text_information = word_tokenize(clean_post) # 
+    text_information = [ps.stem(word) for word in text_information] # stem all words
+    return text_information
+    
+def calc_word_index_freq_pairs(text_information: list, word_index: int, maxL: int) -> (str, int, int):
+    Vec = str()
+    words_per_post = {} # dict with frequencies for every word in a post; reset for every post
+    count_post_length = 0 # reset for every loop iteration
+    for word in text_information: # iterate through words of post
+        if word not in stop_words: # make sure not to include stop words, because they don't have any relevance
+
+            if word not in words.keys():
+                words[word] = word_index # give every word a unique index
+                word_index += 1
+            count_post_length += 1
+
+            if word not in words_per_post.keys():
+                words_per_post[word] = 1
+            else:
+                words_per_post[word] += 1
+
+    iteration = 0 # count iterations to get the last iteration and not put ' ' at the end of Vec
+    for word in words_per_post.keys(): # iterate through words of post a second time to get the right numbers
+
+        Vec += str(words[word]) + ':' + str(words_per_post[word])
+        iteration += 1
+        if iteration != len(words_per_post.keys()): # if it's not the end of the tweet
+            Vec += ' ' # add space between the word index/frequency pairs
+            
+    if maxL < count_post_length: # new maximum post length found
+        maxL = count_post_length
+        
+    return Vec, word_index, maxL
+
 # create treeDic as it is needed for the RvNN
 treeDic = {}
 word_index = 0 # give every word a unique index starting with 0
@@ -120,44 +176,15 @@ for archive, topics in [(training_data_archive, twitter_english.items()),
             eid = indexDic[str(idx)] # convert it to the corresponding simpler ID
             post_structure = json.loads(archive.read(thread['structure.json'])) # get the thread structure as a Dict
             parent_num = calc_parent_num(post_structure) # calculate the number of reply levels in each thread structure
-            #print(eid, parent_num,  " PAUSE ")
             indexC = eid # initialize post index with source post index
             
-            text_information = source_information['text']
-            Vec = str() # every new iteration empty the string containing word_index:word_frequency pairs
-            words_per_post = {} # dict with frequencies for every word in a post; reset for every post
-            count_post_length = 0 # reset for every loop iteration
-            for word in text_information.split(): # iterate through words of post
-                if word not in words.keys() and not word.startswith('http'):
-                    words[word] = word_index # give every word a unique index
-                    word_index += 1
-                elif 'URL' not in words.keys() and word.startswith('http'):
-                    words['URL'] = word_index # save every URL as one word with the same index
-                    word_index += 1
-                count_post_length += 1
-
-                if word not in words_per_post.keys() and not word.startswith('http'):
-                    words_per_post[word] = 1
-                elif 'URL' not in words_per_post.keys() and word.startswith('http'):
-                    words_per_post['URL'] = 1
-                elif word in words_per_post.keys() and not word.startswith('http'):
-                    words_per_post[word] += 1
-                else:
-                    words_per_post['URL'] += 1
-
-            iteration = 0 # count iterations to get the last iteration and not put ' ' at the end of Vec
-            for word in words_per_post.keys(): # iterate through words of post a second time to get the right numbers
-                if word.startswith('http'):
-                    Vec += str(words['URL']) + ':' + str(words_per_post['URL'])
-                else:
-                    Vec += str(words[word]) + ':' + str(words_per_post[word])
-                iteration += 1
-                if iteration != len(words_per_post.keys()): # if it's not the end of the tweet
-                    Vec += ' ' # add space between the word index/frequency pairs
-
-            if maxL < count_post_length: # new maximum post length found
-                maxL = count_post_length
-                
+            # preprocessing of current source post
+            text_information = preprocess_words(source_information['text'])
+            #print(text_information)
+            
+            Vec, word_index, maxL = calc_word_index_freq_pairs(text_information, word_index, maxL)
+            #print(Vec, " wi: ", word_index, " maxL: ", maxL)
+            
             if idx not in treeDic: # create empty entry first to make the key accessable
                 treeDic[idx] = {}
             treeDic[idx][indexC] = {'parent':'None', 'parent_num':parent_num, 'maxL':0, 'vec':Vec}
@@ -171,48 +198,16 @@ for archive, topics in [(training_data_archive, twitter_english.items()),
                     # find out parent of each reply node
                     indexP = find_parent_node(post_structure, str(reply_idx))
                     
-                    text_information = reply_information['text']
+                    # preprocessing of current reply post
+                    text_information = preprocess_words(reply_information['text'])
                     #print(text_information)
-                    Vec = str() # every new iteration empty the string containing word_index:word_frequency pairs
-                    words_per_post = {} # dict with frequencies for every word in a post; reset for every post
-                    count_post_length = 0 # reset for every loop iteration
-                    for word in text_information.split(): # iterate through words of post
-                        if word not in words.keys() and not word.startswith('http'):
-                            words[word] = word_index # give every word a unique index
-                            word_index += 1
-                        elif 'URL' not in words.keys() and word.startswith('http'):
-                            words['URL'] = word_index # save every URL as one word with the same index
-                            word_index += 1
-                        count_post_length += 1
-
-                        if word not in words_per_post.keys() and not word.startswith('http'):
-                            words_per_post[word] = 1
-                        elif 'URL' not in words_per_post.keys() and word.startswith('http'):
-                            words_per_post['URL'] = 1
-                        elif word in words_per_post.keys() and not word.startswith('http'):
-                            words_per_post[word] += 1
-                        else:
-                            words_per_post['URL'] += 1
-
-                    iteration = 0 # count iterations to get the last iteration and not put ' ' at the end of Vec
-                    for word in words_per_post.keys(): # iterate through words of post a second time to get the right numbers
-                        if word.startswith('http'):
-                            Vec += str(words['URL']) + ':' + str(words_per_post['URL'])
-                        else:
-                            Vec += str(words[word]) + ':' + str(words_per_post[word])
-                        iteration += 1
-                        if iteration != len(words_per_post.keys()): # if it's not the end of the tweet
-                            Vec += ' ' # add space between the word index/frequency pairs
-
-                    if maxL < count_post_length: # new maximum post length found
-                        maxL = count_post_length
-                        maxIdx = idx
-                        maxIndexC = indexC
                     
-                    #print(indexC, indexP, parent_num, indexP in indexDic)
+                    Vec, word_index, maxL = calc_word_index_freq_pairs(text_information, word_index, maxL)
+                    #print(Vec, " wi: ", word_index, " maxL: ", maxL)
+                    
                     treeDic[idx][indexC] = {'parent':indexP, 'parent_num':parent_num, 'maxL':0, 'vec':Vec}
                     highest_source_eid += 1 # increase index for the next reply
-                    
+
             for post in treeDic[idx].values(): # go through all posts again to set the maxL for every thread
                 post['maxL'] = maxL
 
@@ -222,12 +217,14 @@ for i,v in treeDic.items():
     for j,w in list(v.items()):
         if not w['parent'] == 'None':
             if w['parent'] in indexDic:
-                #print(w['parent'], " before")
                 w['parent'] = indexDic[w['parent']]
-                #print(w['parent'], " after")
             else: # delete all branches in the tree which start with IDs that don't appear in the actual data 
-                print(w['parent'], w) # (because there is no statistical significance if we can't track the posts
-                print("whole branch ", treeDic[i][j])   # they refer to)
+                #print(w['parent'], w) # (because there is no statistical significance if we can't track the posts
+                #print("whole branch ", treeDic[i][j])   # they refer to)
+                del treeDic[i][j]
+            if w['vec'] == '':
+                #print(w['parent'], w)
+                #print("vec whole branch ", treeDic[i][j])
                 del treeDic[i][j]
 #print(treeDic)
 
@@ -242,8 +239,6 @@ def str2matrix(Str, MaxL): # str = index:wordfreq index:wordfreq
     ladd = [ 0 for i in range( MaxL-l ) ]
     wordFreq += ladd 
     wordIndex += ladd 
-    #print MaxL, l, len(Str.split(' ')), len(wordFreq)
-    #print Str.split(' ')
     return wordFreq, wordIndex
 
 # load label function
@@ -275,10 +270,8 @@ def constructTree(tree):
         indexP = tree[j]['parent']
         nodeC = index2node[indexC]
         wordFreq, wordIndex = str2matrix( tree[j]['vec'], tree[j]['maxL'] )
-        #print tree[j]['maxL']
         nodeC.index = wordIndex
         nodeC.word = wordFreq
-        #nodeC.time = tree[j]['post_t']
         ## not root node ## 
         if not indexP == 'None':
             if int(indexP) in index2node: # there are two IDs listed in the structure files which don't exist in the training set
@@ -298,7 +291,6 @@ def constructTree(tree):
 tree_train, word_train, index_train, y_train, parent_num_train, c = [], [], [], [], [], 0
 l1,l2,l3 = 0,0,0
 for eid in train_IDs:
-    #print(eid)
     if indexDic[eid] not in labelDic: continue
     if int(eid) not in treeDic: continue
     if len(treeDic[int(eid)]) <= 0:
@@ -317,15 +309,11 @@ for eid in train_IDs:
 tree_test, word_test, index_test, parent_num_test, y_test, c = [], [], [], [], [], 0
 l1,l2,l3 = 0,0,0
 for eid in test_IDs:
-    #print(eid)
-    if indexDic[eid] not in labelDic: 
-        print("1")
+    if indexDic[eid] not in labelDic:
         continue
     if int(eid) not in treeDic:
-        print("2")
         continue
     if len(treeDic[int(eid)]) <= 0:
-        print("3")
         continue    
     label = labelDic[indexDic[eid]]
     y, l1,l2,l3 = loadLabel(label, l1, l2, l3)
@@ -337,7 +325,6 @@ for eid in test_IDs:
     index_test.append(x_index)
     parent_num_test.append(parent_num)
     c += 1
-    #print(tree)
 print(l1,l2,l3)
 print("train no:", len(tree_train), len(parent_num_train), len(y_train))
 print("test no:", len(tree_test), len(parent_num_test), len(y_test))
@@ -362,7 +349,6 @@ for j in range(0,len(word_train)):
         else:
             word_ext.append([0] * len(word_train[j][0])) # pad lines of zeros
     word_train[j] = word_ext
-    print(len(word_train[j]))
 # and also index_train and tree_train (because some trees are too small to handle)
 for i in range(0,len(index_train)):
     index_ext = list(index_train[i])
@@ -391,7 +377,10 @@ for i in range(0,len(index_test)):
     tree_test[i] = tree_ext
 
 # Gradient descent
-Nepoch = 1
+
+from sklearn.metrics import accuracy_score, classification_report, f1_score
+
+Nepoch = 50 # change to a higher number later
 lr = 0.005
 losses_5, losses = [], []
 num_examples_seen = 0
@@ -399,23 +388,44 @@ for epoch in range(Nepoch):
     indexs = [i for i in range(len(y_train))]
     for i in indexs:
         loss, pred_y = model.train_step_up(word_train[i], index_train[i], parent_num_train[i], tree_train[i], y_train[i], lr)
-        print("iteration ", i)
+        #print("iteration ", i)
         losses.append(np.round(loss,2))
         num_examples_seen += 1
     print("epoch=%d: loss=%f" % ( epoch, np.mean(losses) ))
     sys.stdout.flush()
     
     ## cal loss & evaluate
-    if epoch % 5 == 0:
+    if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
         losses_5.append((num_examples_seen, np.mean(losses))) 
         time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, np.mean(losses)))    
         sys.stdout.flush()
         prediction = []
         for j in range(len(y_test)):
-            prediction.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]) )   
-        res = evaluation_3class(prediction, y_test)
-        print('results:', res)
+            prediction.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
+        #res = evaluation_3class(prediction, y_test)
+        #PROVISORISCH
+        y_truth = []
+        y_pred = []
+        for i in range(0,len(y_test)):
+            if y_test[i][0] == 1:
+                y_truth.append(0)
+            elif y_test[i][1] == 1:
+                y_truth.append(1)
+            else:
+                y_truth.append(2)
+            maxim = 0
+            maxIdx = 3
+            for j in range(0,3):
+                if list(prediction[i][0])[j] > maxim:
+                    maxim = list(prediction[i][0])[j]
+                    maxIdx = j
+                #print(list(prediction[i][0])[j])
+            #print(maxim, maxIdx)
+            y_pred.append(maxIdx)
+        print("Accuracy: ", accuracy_score(y_truth, y_pred), " F1-Macro: ", f1_score(y_truth, y_pred, average='macro'))
+        #PROVISORISCH
+        #print('results:', res)
         sys.stdout.flush()
         ## Adjust the learning rate if loss increases
         if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
