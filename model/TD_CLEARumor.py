@@ -332,7 +332,7 @@ print("dim1 for 0:", len(tree_train[0]), len(word_train[0]), len(index_train[0])
 print("case 0:", tree_train[0], word_train[0][0], index_train[0][0],  parent_num_train[0])
 
 # RvNN testing
-vocabulary_size = 20000 # todo: make this value smaller later (when vocabulary is smaller because of NLP)
+vocabulary_size = 7588
 hidden_dim = 100
 Nclass = 3
 t0 = time.time()
