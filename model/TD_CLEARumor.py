@@ -61,27 +61,24 @@ test_labels = json.load(open(testLabelPath,'r'))
 # load all labels (train/dev/test) into one dictionary as (sourceID:label)
 # and all IDs for training and test data into two separate lists
 labelDic, indexDic = {}, {} # labelDic contains all (eid,label) connections and indexDic contains (idx, eid) translation
-# to make indexing more simple and avoid 18 digit numbers
+# to make indexing more simple
 eid = 1 # start indexing at one and assign each new tweet an index eid+=1        
 train_IDs, test_IDs = [], []
 for (idx, label) in train_labels['subtaskbenglish'].items():
-    if len(idx) == 18: # for now only consider the twitter IDs and labels
-        indexDic[idx] = eid # keep connection between simple index and 18 digit index for look-ups later
-        labelDic[eid] = label.lower()
-        train_IDs.append(idx)
-        eid += 1 # increase index by one for the next tweet
+    indexDic[idx] = eid # keep connection between simple index and 18 digit index for look-ups later
+    labelDic[eid] = label.lower()
+    train_IDs.append(idx)
+    eid += 1 # increase index by one for the next tweet
 for (idx, label) in dev_labels['subtaskbenglish'].items():
-    if len(idx) == 18: # for now only consider the twitter IDs and labels
-        indexDic[idx] = eid
-        labelDic[eid] = label.lower()
-        train_IDs.append(idx)
-        eid += 1
+    indexDic[idx] = eid
+    labelDic[eid] = label.lower()
+    train_IDs.append(idx)
+    eid += 1
 for (idx, label) in test_labels['subtaskbenglish'].items():
-    if len(idx) == 18: # for now only consider the twitter IDs and labels
-        indexDic[idx] = eid
-        labelDic[eid] = label.lower()
-        test_IDs.append(idx)
-        eid += 1
+    indexDic[idx] = eid
+    labelDic[eid] = label.lower()
+    test_IDs.append(idx)
+    eid += 1
 highest_source_eid = eid # keep this value to continue counting upwards for simpler reply indices later
 
 # generate the tree from the zip file data
@@ -89,6 +86,10 @@ twitter_english = training_data_contents['twitter-english']
 test_data_archive = ZipFile(testPath)
 test_data_contents = get_archive_directory_structure(test_data_archive)
 twitter_en_test_data = test_data_contents['twitter-en-test-data']
+# add reddit data
+reddit_training_data = training_data_contents['reddit-training-data']
+reddit_dev_data = training_data_contents['reddit-dev-data']
+reddit_test_data = test_data_contents['reddit-test-data']
 
 # calculate parent_num, indexP and indexC for the treeDic
 def calc_parent_num(tree_branch: Dict) -> int: # go recursively through tree and calculate parent_num
@@ -122,10 +123,11 @@ ps = PorterStemmer()
 def preprocess_words(raw_post: str) -> list:
     post_words = []
     for word in raw_post.split():
-        if not word.startswith('@') and not word.startswith('http'): # remove mentions and URLs
-            post_words.append(word)
-        elif word.startswith('http'):
-            post_words.append('http') # for each link put http such that URLs can be identified for the indexing
+        if len(post_words) < 20: # make sure that posts don't contain more than 20 words (clip bigger posts)
+            if not word.startswith('@') and not word.startswith('http'): # remove mentions and URLs
+                post_words.append(word)
+            elif word.startswith('http'):
+                post_words.append('http') # for each link put http such that URLs can be identified for the indexing
     clean_post = ' '.join(post_words) # put post back together
     text_information = word_tokenize(clean_post) # 
     text_information = [ps.stem(word) for word in text_information] # stem all words
@@ -161,55 +163,83 @@ def calc_word_index_freq_pairs(text_information: list, word_index: int, maxL: in
         
     return Vec, word_index, maxL
 
+# function for calculating the dictionary containing all the tree information for the RvNN
+def calc_treeDic(treeDic: Dict, thread: Dict, twitter: bool, word_index: int,
+                highest_source_eid: int) -> (Dict, int, int):
+    maxL = 0 # maximum post length of each thread => reset to 0 for each new thread
+    # get the source information as a Dict (contains all info about the source post)
+    # somehow the folder is also named 'source-tweet' in the reddit data
+    source_information = json.loads(archive.read(list(thread['source-tweet'].values())[0]))
+    if twitter:
+        idx = source_information['id'] # get the 18 digit source ID
+    else: # get reddit ID
+        idx = source_information['data']['children'][0]['data']['id']
+    eid = indexDic[str(idx)] # convert it to the corresponding simpler ID
+    post_structure = json.loads(archive.read(thread['structure.json'])) # get the thread structure as a Dict
+    parent_num = calc_parent_num(post_structure) # calculate the number of reply levels in each thread structure
+    indexC = eid # initialize post index with source post index
+
+    # preprocessing of current source post
+    if twitter:
+        text_information = preprocess_words(source_information['text'])
+    else: # reddit
+        text_information = preprocess_words(source_information['data']['children'][0]['data']['title'])
+    #print(text_information)
+
+    Vec, word_index, maxL = calc_word_index_freq_pairs(text_information, word_index, maxL)
+    #print(Vec, " wi: ", word_index, " maxL: ", maxL)
+
+    if idx not in treeDic: # create empty entry first to make the key accessable
+        treeDic[idx] = {}
+    treeDic[idx][indexC] = {'parent':'None', 'parent_num':parent_num, 'maxL':0, 'vec':Vec}
+    if 'replies' in thread: # some "replies" folders seem to be empty and then this for loop would throw an error
+        for reply in thread['replies'].values(): # for every reply post
+            reply_empty = True # reset this value for every reply to check if reddit replies are empty
+            # get the reply information as a Dict (contains all info about the reply post)
+            reply_information = json.loads(archive.read(reply))
+            if not twitter:
+                if 'body' in reply_information['data']:
+                    reply_empty = False
+            if twitter or not reply_empty:
+                if twitter:
+                    reply_idx = reply_information['id']
+                else: # reddit
+                    reply_idx = reply_information['data']['id']
+                indexC = highest_source_eid # convert 18 digit index to simpler index
+                indexDic[str(reply_idx)] = highest_source_eid # save connection between IDs (18 digit and simple)
+                # find out parent of each reply node
+                indexP = find_parent_node(post_structure, str(reply_idx))
+
+                # preprocessing of current reply post
+                if twitter:
+                    text_information = preprocess_words(reply_information['text'])
+                else: # reddit
+                    text_information = preprocess_words(reply_information['data']['body'])
+
+                Vec, word_index, maxL = calc_word_index_freq_pairs(text_information, word_index, maxL)
+
+                treeDic[idx][indexC] = {'parent':indexP, 'parent_num':parent_num, 'maxL':0, 'vec':Vec}
+                highest_source_eid += 1 # increase index for the next reply
+    for post in treeDic[idx].values(): # go through all posts again to set the maxL for every thread
+        post['maxL'] = maxL
+    return treeDic, word_index, highest_source_eid
+
 # create treeDic as it is needed for the RvNN
 treeDic = {}
 word_index = 0 # give every word a unique index starting with 0
 words = {} # dict containing words of all posts combined => ('word':word_index)
+# twitter data
 for archive, topics in [(training_data_archive, twitter_english.items()),
                             (test_data_archive, twitter_en_test_data.items())]:
     for topic, threads in topics:
         for thread in threads.values():
-            maxL = 0 # maximum post length of each thread => reset to 0 for each new thread
-            # get the source information as a Dict (contains all info about the source post)
-            source_information = json.loads(archive.read(list(thread['source-tweet'].values())[0]))
-            idx = source_information['id'] # get the 18 digit source ID
-            eid = indexDic[str(idx)] # convert it to the corresponding simpler ID
-            post_structure = json.loads(archive.read(thread['structure.json'])) # get the thread structure as a Dict
-            parent_num = calc_parent_num(post_structure) # calculate the number of reply levels in each thread structure
-            indexC = eid # initialize post index with source post index
-            
-            # preprocessing of current source post
-            text_information = preprocess_words(source_information['text'])
-            #print(text_information)
-            
-            Vec, word_index, maxL = calc_word_index_freq_pairs(text_information, word_index, maxL)
-            #print(Vec, " wi: ", word_index, " maxL: ", maxL)
-            
-            if idx not in treeDic: # create empty entry first to make the key accessable
-                treeDic[idx] = {}
-            treeDic[idx][indexC] = {'parent':'None', 'parent_num':parent_num, 'maxL':0, 'vec':Vec}
-            if 'replies' in thread: # some "replies" folders seem to be empty and then this for loop would throw an error
-                for reply in thread['replies'].values(): # for every reply post
-                    # get the reply information as a Dict (contains all info about the reply post)
-                    reply_information = json.loads(archive.read(reply))
-                    reply_idx = reply_information['id']
-                    indexC = highest_source_eid # convert 18 digit index to simpler index
-                    indexDic[str(reply_idx)] = highest_source_eid # save connection between IDs (18 digit and simple)
-                    # find out parent of each reply node
-                    indexP = find_parent_node(post_structure, str(reply_idx))
-                    
-                    # preprocessing of current reply post
-                    text_information = preprocess_words(reply_information['text'])
-                    #print(text_information)
-                    
-                    Vec, word_index, maxL = calc_word_index_freq_pairs(text_information, word_index, maxL)
-                    #print(Vec, " wi: ", word_index, " maxL: ", maxL)
-                    
-                    treeDic[idx][indexC] = {'parent':indexP, 'parent_num':parent_num, 'maxL':0, 'vec':Vec}
-                    highest_source_eid += 1 # increase index for the next reply
-
-            for post in treeDic[idx].values(): # go through all posts again to set the maxL for every thread
-                post['maxL'] = maxL
+            treeDic, word_index, highest_source_eid = calc_treeDic(treeDic, thread, True, word_index, highest_source_eid)
+# reddit data
+for archive, threads in [(training_data_archive, reddit_training_data),
+                            (training_data_archive, reddit_dev_data),
+                            (test_data_archive, reddit_test_data)]:
+    for thread in threads.values():
+        treeDic, word_index, highest_source_eid = calc_treeDic(treeDic, thread, False, word_index, highest_source_eid)
 
 # iterate through treeDic again and change parent indices to the corresponding smaller values of indexDic
 # and also delete tree branches that contain posts which don't appear in the dataset
@@ -219,14 +249,13 @@ for i,v in treeDic.items():
             if w['parent'] in indexDic:
                 w['parent'] = indexDic[w['parent']]
             else: # delete all branches in the tree which start with IDs that don't appear in the actual data 
-                #print(w['parent'], w) # (because there is no statistical significance if we can't track the posts
-                #print("whole branch ", treeDic[i][j])   # they refer to)
+                print(w['parent'], w) # (because there is no statistical significance if we can't track the posts
+                print("whole branch ", treeDic[i][j])   # they refer to)
                 del treeDic[i][j]
             if w['vec'] == '':
                 #print(w['parent'], w)
-                #print("vec whole branch ", treeDic[i][j])
+                print("vec whole branch ", treeDic[i][j])
                 del treeDic[i][j]
-#print(treeDic)
 
 # function for handling word frequencies and indices
 def str2matrix(Str, MaxL): # str = index:wordfreq index:wordfreq
@@ -292,13 +321,16 @@ tree_train, word_train, index_train, y_train, parent_num_train, c = [], [], [], 
 l1,l2,l3 = 0,0,0
 for eid in train_IDs:
     if indexDic[eid] not in labelDic: continue
-    if int(eid) not in treeDic: continue
-    if len(treeDic[int(eid)]) <= 0:
+    if len(eid) == 18:
+        eid = int(eid) # twitter IDs have to be cast to int for key checking
+    if eid not in treeDic:
         continue
-    label = labelDic[indexDic[eid]]
+    if len(treeDic[eid]) <= 0:
+        continue
+    label = labelDic[indexDic[str(eid)]]
     y, l1,l2,l3 = loadLabel(label, l1, l2, l3)
     y_train.append(y)
-    x_word, x_index, tree, parent_num = constructTree(treeDic[int(eid)])
+    x_word, x_index, tree, parent_num = constructTree(treeDic[eid])
     tree_train.append(tree)
     word_train.append(x_word)
     index_train.append(x_index)
@@ -311,15 +343,17 @@ l1,l2,l3 = 0,0,0
 for eid in test_IDs:
     if indexDic[eid] not in labelDic:
         continue
-    if int(eid) not in treeDic:
+    if len(eid) == 18:
+        eid = int(eid) # twitter IDs have to be cast to int for key checking
+    if eid not in treeDic:
         continue
-    if len(treeDic[int(eid)]) <= 0:
+    if len(treeDic[eid]) <= 0:
         continue    
-    label = labelDic[indexDic[eid]]
+    label = labelDic[indexDic[str(eid)]]
     y, l1,l2,l3 = loadLabel(label, l1, l2, l3)
     y_test.append(y)
     ## 2. construct tree
-    x_word, x_index, tree, parent_num = constructTree(treeDic[int(eid)])
+    x_word, x_index, tree, parent_num = constructTree(treeDic[eid])
     tree_test.append(tree)
     word_test.append(x_word)
     index_test.append(x_index)
@@ -332,7 +366,7 @@ print("dim1 for 0:", len(tree_train[0]), len(word_train[0]), len(index_train[0])
 print("case 0:", tree_train[0], word_train[0][0], index_train[0][0],  parent_num_train[0])
 
 # RvNN testing
-vocabulary_size = 7588
+vocabulary_size = 9189 # todo: make this value smaller later (when vocabulary is smaller because of NLP)
 hidden_dim = 100
 Nclass = 3
 t0 = time.time()
@@ -380,7 +414,7 @@ for i in range(0,len(index_test)):
 
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 
-Nepoch = 50 # change to a higher number later
+Nepoch = 600
 lr = 0.005
 losses_5, losses = [], []
 num_examples_seen = 0
@@ -388,48 +422,48 @@ for epoch in range(Nepoch):
     indexs = [i for i in range(len(y_train))]
     for i in indexs:
         loss, pred_y = model.train_step_up(word_train[i], index_train[i], parent_num_train[i], tree_train[i], y_train[i], lr)
-        #print("iteration ", i)
+        print("iteration ", i) # TODO: comment this one out, it's just for "simulating" a loading bar while testing
         losses.append(np.round(loss,2))
         num_examples_seen += 1
     print("epoch=%d: loss=%f" % ( epoch, np.mean(losses) ))
     sys.stdout.flush()
     
     ## cal loss & evaluate
-    if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
-        losses_5.append((num_examples_seen, np.mean(losses))) 
-        time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, np.mean(losses)))    
+    #if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
+    losses_5.append((num_examples_seen, np.mean(losses))) 
+    time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, np.mean(losses)))    
+    sys.stdout.flush()
+    prediction = []
+    for j in range(len(y_test)):
+        prediction.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
+    #res = evaluation_3class(prediction, y_test)
+    #PROVISORISCH
+    y_truth = []
+    y_pred = []
+    for i in range(0,len(y_test)):
+        if y_test[i][0] == 1:
+            y_truth.append(0)
+        elif y_test[i][1] == 1:
+            y_truth.append(1)
+        else:
+            y_truth.append(2)
+        maxim = 0
+        maxIdx = 3
+        for j in range(0,3):
+            if list(prediction[i][0])[j] > maxim:
+                maxim = list(prediction[i][0])[j]
+                maxIdx = j
+            #print(list(prediction[i][0])[j])
+        #print(maxim, maxIdx)
+        y_pred.append(maxIdx)
+    print("Accuracy: ", accuracy_score(y_truth, y_pred), " F1-Macro: ", f1_score(y_truth, y_pred, average='macro'))
+    #PROVISORISCH
+    #print('results:', res)
+    sys.stdout.flush()
+    ## Adjust the learning rate if loss increases
+    if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
+        lr = lr * 0.5   
+        print("Setting learning rate to %f" % lr)
         sys.stdout.flush()
-        prediction = []
-        for j in range(len(y_test)):
-            prediction.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
-        #res = evaluation_3class(prediction, y_test)
-        #PROVISORISCH
-        y_truth = []
-        y_pred = []
-        for i in range(0,len(y_test)):
-            if y_test[i][0] == 1:
-                y_truth.append(0)
-            elif y_test[i][1] == 1:
-                y_truth.append(1)
-            else:
-                y_truth.append(2)
-            maxim = 0
-            maxIdx = 3
-            for j in range(0,3):
-                if list(prediction[i][0])[j] > maxim:
-                    maxim = list(prediction[i][0])[j]
-                    maxIdx = j
-                #print(list(prediction[i][0])[j])
-            #print(maxim, maxIdx)
-            y_pred.append(maxIdx)
-        print("Accuracy: ", accuracy_score(y_truth, y_pred), " F1-Macro: ", f1_score(y_truth, y_pred, average='macro'))
-        #PROVISORISCH
-        #print('results:', res)
-        sys.stdout.flush()
-        ## Adjust the learning rate if loss increases
-        if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
-            lr = lr * 0.5   
-            print("Setting learning rate to %f" % lr)
-            sys.stdout.flush()
     losses = []
