@@ -5,23 +5,6 @@
 # (https://github.com/Institute-Web-Science-and-Technologies/CLEARumor ; state: 10.09.2019).
 # @authors: Dhurim Sylejmani and Nico Zettler
 
-#import sys
-#from importlib import reload
-#reload(sys)
-
-#import RvNN_model
-#import math
-
-#import theano
-#from theano import tensor as T
-#import numpy as np
-#from numpy.testing import assert_array_almost_equal
-
-#import time
-#import datetime
-#import random
-#from evaluate import *
-
 from warnings import filterwarnings
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.exceptions import UndefinedMetricWarning
