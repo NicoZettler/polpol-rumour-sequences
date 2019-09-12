@@ -138,12 +138,12 @@ def trim_tree(treeDic: Dict, indexDic: Dict) -> Dict:
                 if w['parent'] in indexDic:
                     w['parent'] = indexDic[w['parent']]
                 else: # delete all branches in the tree which start with IDs that don't appear in the actual data 
-                    print(w['parent'], w) # (because there is no statistical significance if we can't track the posts
-                    print("whole branch ", treeDic[i][j])   # they refer to)
+                    #print(w['parent'], w) # (because there is no statistical significance if we can't track the posts
+                    #print("whole branch ", treeDic[i][j])   # they refer to)
                     del treeDic[i][j]
                 if w['vec'] == '':
                     #print(w['parent'], w)
-                    print("vec whole branch ", treeDic[i][j])
+                    #print("vec whole branch ", treeDic[i][j])
                     del treeDic[i][j]
     return treeDic
 
