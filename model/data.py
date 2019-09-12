@@ -43,13 +43,13 @@ def load_data() -> (Dict, Dict, Dict, Dict, Dict, Dict, Dict, Dict, ZipFile, Zip
         reddit_train_data, reddit_dev_data, reddit_test_data, training_data_archive, \
         test_data_archive
     
-def load_labels(train_data: Dict, dev_data: Dict, test_data: Dict):
+def load_labels(train_data: Dict, dev_data: Dict, test_data: Dict) -> (Dict, Dict, list, list, list, int):
     # load all labels (train/dev/test) into one dictionary as (sourceID:label)
     # and all IDs for training and test data into two separate lists
     labelDic, indexDic = {}, {} # labelDic contains all (eid,label) connections and indexDic contains (idx, eid) translation
     # to make indexing more simple
     eid = 1 # start indexing at one and assign each new tweet an index eid+=1        
-    train_IDs, test_IDs = [], []
+    train_IDs, dev_IDs, test_IDs = [], [], []
     for (idx, label) in train_data['subtaskbenglish'].items():
         indexDic[idx] = eid # keep connection between simple index and 18 digit index for look-ups later
         labelDic[eid] = label.lower()
@@ -58,7 +58,7 @@ def load_labels(train_data: Dict, dev_data: Dict, test_data: Dict):
     for (idx, label) in dev_data['subtaskbenglish'].items():
         indexDic[idx] = eid
         labelDic[eid] = label.lower()
-        train_IDs.append(idx)
+        dev_IDs.append(idx)
         eid += 1
     for (idx, label) in test_data['subtaskbenglish'].items():
         indexDic[idx] = eid
@@ -66,4 +66,4 @@ def load_labels(train_data: Dict, dev_data: Dict, test_data: Dict):
         test_IDs.append(idx)
         eid += 1
     highest_source_eid = eid # keep this value to continue counting upwards for simpler reply indices later
-    return labelDic, indexDic, train_IDs, test_IDs, highest_source_eid
+    return labelDic, indexDic, train_IDs, dev_IDs, test_IDs, highest_source_eid
