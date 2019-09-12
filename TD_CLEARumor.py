@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Top-down RvNN implementation based on the model of Jing Ma et al.
 # (https://github.com/majingCUHK/Rumor_RvNN ; state: 10.09.2019)
 # to improve the results of the rumor verification accomplished by the CLEARumor approach by Ipek Baris et al.
@@ -8,12 +7,14 @@
 from warnings import filterwarnings
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.exceptions import UndefinedMetricWarning
-filterwarnings('ignore', category=UndefinedMetricWarning)
 import numpy as np
 from model.data import load_data, load_labels
 from model.preprocessing import calc_treeDic, trim_tree, fit_to_model
 from model.treebuilding import load_tree_data
 from model.model import establish_model
+
+filterwarnings('ignore', category=UndefinedMetricWarning)
+filterwarnings('ignore', category=UserWarning)
 
 vocabulary_size = 9189 # todo: make this value smaller later (when vocabulary is smaller because of NLP)
 hidden_dim = 100
@@ -27,7 +28,7 @@ train_data, dev_data, test_data, twitter_train_data, twitter_test_data, \
 
 # load all labels (train/dev/test) into one dictionary as (sourceID:label)
 # and all IDs for training and test data into two separate lists
-labelDic, indexDic, train_IDs, test_IDs, highest_source_eid = load_labels(train_data, dev_data, test_data)
+labelDic, indexDic, train_IDs, dev_IDs, test_IDs, highest_source_eid = load_labels(train_data, dev_data, test_data)
 
 # create treeDic as it is needed for the RvNN
 treeDic = {}
@@ -53,6 +54,10 @@ treeDic = trim_tree(treeDic, indexDic)
 # load training data
 tree_train, word_train, index_train, y_train, parent_num_train = load_tree_data(indexDic, labelDic, treeDic, train_IDs)
 word_train, index_train, tree_train = fit_to_model(word_train, index_train, tree_train)
+
+# load dev data
+tree_dev, word_dev, index_dev, y_dev, parent_num_dev = load_tree_data(indexDic, labelDic, treeDic, dev_IDs)
+word_dev, index_dev, tree_dev = fit_to_model(word_dev, index_dev, tree_dev)
 
 # load test data
 tree_test, word_test, index_test, y_test, parent_num_test = load_tree_data(indexDic, labelDic, treeDic, test_IDs)
@@ -81,27 +86,33 @@ def evaluate(y_test: list, prediction: list) -> None:
     print("Accuracy: ", accuracy_score(y_truth, y_pred), " F1-Macro: ", f1_score(y_truth, y_pred, average='macro'))
 
 # gradient descent
-Nepoch = 50
+Nepoch = 51
 learning_rate = 0.005
-losses_5, losses = [], []
+#losses_5 = []
+losses = []
 count_samples = 0
 for epoch in range(Nepoch):
     indexs = [i for i in range(len(y_train))]
     for i in indexs:
         loss, pred_y = model.train_step_up(word_train[i], index_train[i], parent_num_train[i], tree_train[i], y_train[i], learning_rate)
-        print("iteration ", i)
+        #print("iteration ", i)
         losses.append(np.round(loss,2))
         count_samples += 1
     print("Epoch: ", epoch, " Loss: ", np.mean(losses))
     
-    #if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
-    losses_5.append((count_samples, np.mean(losses)))
-    prediction = []
-    for j in range(len(y_test)):
-        prediction.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
-    evaluate(y_test, prediction)
-    ## Adjust the learning rate if loss increases
-    if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
-        learning_rate = learning_rate * 0.5   
-        print("Setting learning rate to ", learning_rate)
+    if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
+        #losses_5.append((count_samples, np.mean(losses)))
+        prediction_dev, prediction_test = [], []
+        for j in range(len(y_dev)):
+            prediction_dev.append(model.predict_up(word_dev[j], index_dev[j], parent_num_dev[j], tree_dev[j]))
+        print("Validation:")
+        evaluate(y_dev, prediction_dev)
+        for j in range(len(y_test)):
+            prediction_test.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
+        print("Test:")
+        evaluate(y_test, prediction_test)
+        ## Adjust the learning rate if loss increases
+        # if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
+            # learning_rate = learning_rate * 0.5   
+            # print("Setting learning rate to ", learning_rate)
     losses = []
