@@ -1,3 +1,6 @@
+# Top-down RvNN implementation based on the model of Jing Ma et al.
+# (https://github.com/majingCUHK/Rumor_RvNN ; state: 10.09.2019)
+
 import numpy as np
 import theano
 from theano import tensor as T
@@ -82,7 +85,7 @@ class RvNN(object):
     state computed at the root.
 
     """
-    def __init__(self, word_dim, hidden_dim=5, Nclass=4,
+    def __init__(self, word_dim, hidden_dim=5, Nclass=3,
                 degree=2, momentum=0.9,
                  trainable_embeddings=True,
                  labels_on_nonroot_nodes=False,
