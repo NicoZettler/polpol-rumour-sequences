@@ -5,8 +5,9 @@
 # @authors: Dhurim Sylejmani and Nico Zettler
 
 from warnings import filterwarnings
-from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.metrics import accuracy_score, f1_score, mean_squared_error
 from sklearn.exceptions import UndefinedMetricWarning
+from math import sqrt
 import numpy as np
 from model.data import load_data, load_labels
 from model.preprocessing import calc_treeDic, trim_tree, fit_to_model
@@ -18,7 +19,10 @@ filterwarnings('ignore', category=UserWarning)
 
 vocabulary_size = 9189 # todo: make this value smaller later (when vocabulary is smaller because of NLP)
 hidden_dim = 100
-Nclass = 3
+repitition_count = 10
+class_count = 3
+epoch_count = 51
+learning_rate = 0.01
 
 # load data => find the labels for training and test data and put them into a dict structured as needed in RvNN approach
 # at first handle zip files as in CLEARumor implementation
@@ -63,10 +67,7 @@ word_dev, index_dev, tree_dev = fit_to_model(word_dev, index_dev, tree_dev)
 tree_test, word_test, index_test, y_test, parent_num_test = load_tree_data(indexDic, labelDic, treeDic, test_IDs)
 word_test, index_test, tree_test = fit_to_model(word_test, index_test, tree_test)
 
-# establish RvNN model
-model = establish_model(vocabulary_size, hidden_dim, Nclass)
-
-def evaluate(y_test: list, prediction: list) -> None:
+def evaluate(y_test: list, prediction: list) -> (list, list, list):
     y_truth = []
     y_pred = []
     for i in range(0,len(y_test)):
@@ -83,36 +84,57 @@ def evaluate(y_test: list, prediction: list) -> None:
                 maxim = list(prediction[i][0])[j]
                 maxIdx = j
         y_pred.append(maxIdx)
-    print("Accuracy: ", accuracy_score(y_truth, y_pred), " F1-Macro: ", f1_score(y_truth, y_pred, average='macro'))
+    acc = accuracy_score(y_truth, y_pred)
+    f1 = f1_score(y_truth, y_pred, average='macro')
+    rmse = sqrt(mean_squared_error(y_truth, y_pred))
+    print("Accuracy: ", acc, " F1-Macro: ", f1, "RMSE: ", rmse)
+    return acc, f1, rmse
 
-# gradient descent
-Nepoch = 51
-learning_rate = 0.005
-#losses_5 = []
-losses = []
-count_samples = 0
-for epoch in range(Nepoch):
-    indexs = [i for i in range(len(y_train))]
-    for i in indexs:
-        loss, pred_y = model.train_step_up(word_train[i], index_train[i], parent_num_train[i], tree_train[i], y_train[i], learning_rate)
-        #print("iteration ", i)
-        losses.append(np.round(loss,2))
-        count_samples += 1
-    print("Epoch: ", epoch, " Loss: ", np.mean(losses))
-    
-    if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
-        #losses_5.append((count_samples, np.mean(losses)))
-        prediction_dev, prediction_test = [], []
-        for j in range(len(y_dev)):
-            prediction_dev.append(model.predict_up(word_dev[j], index_dev[j], parent_num_dev[j], tree_dev[j]))
-        print("Validation:")
-        evaluate(y_dev, prediction_dev)
-        for j in range(len(y_test)):
-            prediction_test.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
-        print("Test:")
-        evaluate(y_test, prediction_test)
-        ## Adjust the learning rate if loss increases
-        # if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
-            # learning_rate = learning_rate * 0.5   
-            # print("Setting learning rate to ", learning_rate)
+accs_val, f1s_val, rmses_val, accs_test, f1s_test, rmses_test = [], [], [], [], [], []
+for iteration in range(repitition_count):
+    print("Iteration ", (iteration + 1), "------------------------------------")
+
+    # establish RvNN model
+    model = establish_model(vocabulary_size, hidden_dim, class_count)
+
+    # gradient descent
+    #losses_5 = []
     losses = []
+    count_samples = 0
+    for epoch in range(epoch_count):
+        indexs = [i for i in range(len(y_train))]
+        for i in indexs:
+            loss, pred_y = model.train_step_up(word_train[i], index_train[i], parent_num_train[i], tree_train[i], y_train[i], learning_rate)
+            #print("iteration ", i)
+            losses.append(np.round(loss,2))
+            count_samples += 1
+        print("Epoch: ", epoch, " Loss: ", np.mean(losses))
+        
+        if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
+            #losses_5.append((count_samples, np.mean(losses)))
+            prediction_dev, prediction_test = [], []
+            for j in range(len(y_dev)):
+                prediction_dev.append(model.predict_up(word_dev[j], index_dev[j], parent_num_dev[j], tree_dev[j]))
+            print("Validation:")
+            acc_val, f1_val, rmse_val = evaluate(y_dev, prediction_dev)
+            for j in range(len(y_test)):
+                prediction_test.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
+            print("Test:")
+            acc_test, f1_test, rmse_test = evaluate(y_test, prediction_test)
+            ## Adjust the learning rate if loss increases
+            # if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
+                # learning_rate = learning_rate * 0.5   
+                # print("Setting learning rate to ", learning_rate)
+        losses = []
+    accs_val.append(acc_val)
+    accs_test.append(acc_test)
+    f1s_val.append(f1_val)
+    f1s_test.append(f1_test)
+    rmses_val.append(rmse_val)
+    rmses_test.append(rmse_test)
+
+print("Final results:")
+for i in range(len(accs_val)):
+    print("Iteration ", (i + 1), "------------------------------------")
+    print("Validation: Accuracy ", accs_val[i], " F1: ", f1s_val[i], " RMSE: ", rmses_val)
+    print("Test: Accuracy ", accs_test[i], " F1: ", f1s_test[i], " RMSE: ", rmses_test)
