@@ -41,7 +41,7 @@ def construct_tree(tree):
     
 def load_tree_data(indexDic: Dict, labelDic: Dict, treeDic: Dict, IDList: list) -> (list, list, list, list, list):
     # load training data
-    tree_data, word_data, index_data, y_data, parent_num_data, c = [], [], [], [], [], 0
+    tree_data, word_data, index_data, y_data, parent_num_data = [], [], [], [], []
     for eid in IDList:
         if indexDic[eid] not in labelDic: continue
         if len(eid) == 18:
