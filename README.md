@@ -11,9 +11,9 @@ Rumour classification project in within the scope of the research lab 'Political
 ```
 
 
-2. Create "resources" folder and download/place test data inside (see "Data" section below)
+2. Create "resource" folder and download/place test data inside (see "Data" section below)
 ```bash
-    mkdir resources
+    mkdir resource
 ```
 
 3. Create and activate virtual environment
@@ -48,4 +48,4 @@ Download files from the [RumourEval-2019 competition page](https://competitions.
 * home_scorer_macro.py
 * final-eval-key.json
 
-and put them inside the resources folder created in step 2.
+and put them inside the resource folder created in step 2.
