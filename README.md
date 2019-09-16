@@ -4,9 +4,10 @@ Rumour classification project in within the scope of the research lab 'Political
 
 ## How to run it?
 
-1. Clone the repository
+1. Clone the repository and get into it
 ```bash
     git clone https://github.com/NicoZettler/polpol-rumour-sequences.git
+    cd polpol-rumour-sequences
 ```
 
 2. Create and activate virtual environment
