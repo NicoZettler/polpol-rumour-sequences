@@ -46,4 +46,5 @@ Download files from the [RumourEval-2019 competition page](https://competitions.
 * rumoureval-2019-training-data.zip
 * rumoureval-2019-test-data.zip
 * home_scorer_macro.py
+
 and put them inside the resources folder created in step 2.
