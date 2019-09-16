@@ -10,26 +10,40 @@ Rumour classification project in within the scope of the research lab 'Political
     cd polpol-rumour-sequences
 ```
 
-2. Create and activate virtual environment
+
+2. Create "resources" folder and download/place test data inside (see "Data" section below)
+```bash
+    mkdir resources
+```
+
+3. Create and activate virtual environment
 
 ```bash
     conda create -n polenv python
     conda activate polenv
 ```
 
-3. Install dependencies:
+4. Install dependencies:
 
 ```bash
     pip install -r requirements.txt
 ```
 
-4. Install Tokenizer based on nltk, but with a few more features added
+5. Install Tokenizer based on nltk, but with a few more features added
 ```bash
     pip install git+https://github.com/erikavaris/tokenizer.git
 ```
 
-5. Run the application
+6. Run the application
 
 ```bashh
     python TD_CLEARumor.py
 ```
+
+## Data
+
+Download files from the [RumourEval-2019 competition page](https://competitions.codalab.org/competitions/19938)
+⋅⋅* rumoureval-2019-training-data.zip
+⋅⋅* rumoureval-2019-test-data.zip
+⋅⋅* home_scorer_macro.py
+and put them inside the resources folder created in step 2.
