@@ -4,10 +4,9 @@ Rumour classification project in within the scope of the research lab 'Political
 
 ## How to run it?
 
-1. Clone the repository and get into it
+1. Clone the repository
 ```bash
-    git clone https://github.com/artemisclyde/polpol-rumour-sequences/tree/RvNN-Experiments
-    cd polpol-rumour-sequences
+    git clone https://github.com/NicoZettler/polpol-rumour-sequences.git
 ```
 
 2. Create and activate virtual environment
@@ -31,5 +30,5 @@ Rumour classification project in within the scope of the research lab 'Political
 5. Run the application
 
 ```bashh
-    python run.py
+    python TD_CLEARumor.py
 ```
