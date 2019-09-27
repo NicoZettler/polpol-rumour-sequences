@@ -10,63 +10,76 @@ from sklearn.exceptions import UndefinedMetricWarning
 from math import sqrt
 import numpy as np
 from model.data import load_data, load_labels
-from model.preprocessing import calc_treeDic, trim_tree, fit_to_model
+from model.preprocessing import estimate_word_frequencies, calc_tree_dic
 from model.treebuilding import load_tree_data
 from model.model import establish_model
 
 filterwarnings('ignore', category=UndefinedMetricWarning)
 filterwarnings('ignore', category=UserWarning)
 
-vocabulary_size = 9189 # todo: make this value smaller later (when vocabulary is smaller because of NLP)
+# RvNN parameters
+vocabulary_size = 5000
 hidden_dim = 100
 repitition_count = 10
 class_count = 3
 epoch_count = 51
 learning_rate = 0.01
 
-# load data => find the labels for training and test data and put them into a dict structured as needed in RvNN approach
-# at first handle zip files as in CLEARumor implementation
+# Load data function:
+# Split it into train, dev and test data as well as Twitter and Reddit data.
+# Load also the .zip file structure in training and test data archive.
 train_data, dev_data, test_data, twitter_train_data, twitter_test_data, \
     reddit_train_data, reddit_dev_data, reddit_test_data, training_data_archive, \
     test_data_archive = load_data()
 
-# load all labels (train/dev/test) into one dictionary as (sourceID:label)
-# and all IDs for training and test data into two separate lists
-labelDic, indexDic, train_IDs, dev_IDs, test_IDs, highest_source_eid = load_labels(train_data, dev_data, test_data)
+# Load all labels (train/dev/test) into one dictionary as (sourceID:label)
+# and all IDs for training and test data into three separate lists.
+label_dic, train_IDs, dev_IDs, test_IDs = load_labels(train_data, dev_data, test_data)
 
-# create treeDic as it is needed for the RvNN
-treeDic = {}
-word_index = 0 # give every word a unique index starting with 0
-words = {} # dict containing words of all posts combined => ('word':word_index)
-# twitter data
+# Calculate word frequencies.
+words = {} # Dict containing words of all posts combined => ('word':word_index)
+# Twitter data:
 for archive, topics in [(training_data_archive, twitter_train_data.items()),
                             (test_data_archive, twitter_test_data.items())]:
     for topic, threads in topics:
         for thread in threads.values():
-            treeDic, word_index, highest_source_eid = calc_treeDic(treeDic, thread, True, word_index, highest_source_eid, archive, indexDic, words)
-# reddit data
+            words = estimate_word_frequencies(archive, thread, words, True)
+# Reddit data:
 for archive, threads in [(training_data_archive, reddit_train_data),
                             (training_data_archive, reddit_dev_data),
                             (test_data_archive, reddit_test_data)]:
     for thread in threads.values():
-        treeDic, word_index, highest_source_eid = calc_treeDic(treeDic, thread, False, word_index, highest_source_eid, archive, indexDic, words)
+        words = estimate_word_frequencies(archive, thread, words, False)
 
-# iterate through treeDic again and change parent indices to the corresponding smaller values of indexDic
-# and also delete tree branches that contain posts which don't appear in the dataset
-treeDic = trim_tree(treeDic, indexDic)
+# Sort words by frequency from highest to lowest.
+sorted_words = sorted(words, key=words.get, reverse=True)[0:5000]
 
-# load training data
-tree_train, word_train, index_train, y_train, parent_num_train = load_tree_data(indexDic, labelDic, treeDic, train_IDs)
-word_train, index_train, tree_train = fit_to_model(word_train, index_train, tree_train)
+# Save all information needed for the RvNN in tree_dic dictionary.
+tree_dic = {}
+word_index = 0 # Give every word a unique index starting with 0.
+# Twitter data:
+for archive, topics in [(training_data_archive, twitter_train_data.items()),
+                            (test_data_archive, twitter_test_data.items())]:
+    for topic, threads in topics:
+        for thread in threads.values():
+            tree_dic, word_index = calc_tree_dic(tree_dic, thread, True, word_index, archive, sorted_words)
+# Reddit data:
+for archive, threads in [(training_data_archive, reddit_train_data),
+                            (training_data_archive, reddit_dev_data),
+                            (test_data_archive, reddit_test_data)]:
+    for thread in threads.values():
+        tree_dic, word_index = calc_tree_dic(tree_dic, thread, False, word_index, archive, sorted_words)
 
-# load dev data
-tree_dev, word_dev, index_dev, y_dev, parent_num_dev = load_tree_data(indexDic, labelDic, treeDic, dev_IDs)
-word_dev, index_dev, tree_dev = fit_to_model(word_dev, index_dev, tree_dev)
+# Load training data:
+tree_train, word_train, index_train, y_train, parent_num_train = load_tree_data(label_dic, tree_dic, train_IDs)
 
-# load test data
-tree_test, word_test, index_test, y_test, parent_num_test = load_tree_data(indexDic, labelDic, treeDic, test_IDs)
-word_test, index_test, tree_test = fit_to_model(word_test, index_test, tree_test)
+# Load dev data:
+tree_dev, word_dev, index_dev, y_dev, parent_num_dev = load_tree_data(label_dic, tree_dic, dev_IDs)
 
+# Load test data:
+tree_test, word_test, index_test, y_test, parent_num_test = load_tree_data(label_dic, tree_dic, test_IDs)
+
+# Evaluate function calculates accuracy, F1-score and RMSE depending on the predictions.
 def evaluate(y_test: list, prediction: list) -> (list, list, list):
     y_truth = []
     y_pred = []
@@ -90,15 +103,15 @@ def evaluate(y_test: list, prediction: list) -> (list, list, list):
     print("Accuracy: ", acc, " F1-Macro: ", f1, "RMSE: ", rmse)
     return acc, f1, rmse
 
+# Save all scores in lists for evaluation.
 accs_val, f1s_val, rmses_val, accs_test, f1s_test, rmses_test = [], [], [], [], [], []
 for iteration in range(repitition_count):
     print("Iteration ", (iteration + 1), "------------------------------------")
 
-    # establish RvNN model
+    # Establish RvNN model:
     model = establish_model(vocabulary_size, hidden_dim, class_count)
 
-    # gradient descent
-    #losses_5 = []
+    # Gradient descent:
     losses = []
     count_samples = 0
     for epoch in range(epoch_count):
@@ -110,8 +123,7 @@ for iteration in range(repitition_count):
             count_samples += 1
         print("Epoch: ", epoch, " Loss: ", np.mean(losses))
         
-        if epoch % 5 == 0: #PROVISORISCH: nachher wieder einrücken
-            #losses_5.append((count_samples, np.mean(losses)))
+        if epoch % 5 == 0:
             prediction_dev, prediction_test = [], []
             for j in range(len(y_dev)):
                 prediction_dev.append(model.predict_up(word_dev[j], index_dev[j], parent_num_dev[j], tree_dev[j]))
@@ -121,10 +133,6 @@ for iteration in range(repitition_count):
                 prediction_test.append(model.predict_up(word_test[j], index_test[j], parent_num_test[j], tree_test[j]))
             print("Test:")
             acc_test, f1_test, rmse_test = evaluate(y_test, prediction_test)
-            ## Adjust the learning rate if loss increases
-            # if len(losses_5) > 1 and losses_5[-1][1] > losses_5[-2][1]:
-                # learning_rate = learning_rate * 0.5   
-                # print("Setting learning rate to ", learning_rate)
         losses = []
     accs_val.append(acc_val)
     accs_test.append(acc_test)
