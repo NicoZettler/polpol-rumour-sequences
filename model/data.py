@@ -1,15 +1,23 @@
+# Top-down RvNN implementation based on the model of Jing Ma et al.
+# (https://github.com/majingCUHK/Rumor_RvNN ; state: 10.09.2019)
+# to improve the results of the rumor verification accomplished by the CLEARumor approach by Ipek Baris et al.
+# (https://github.com/Institute-Web-Science-and-Technologies/CLEARumor ; state: 10.09.2019).
+# @authors: Dhurim Sylejmani and Nico Zettler
+
 from zipfile import ZipFile
 from typing import Dict
 from pathlib import Path
 import json
 
-# paths for CLEARumor training and test data
+# Paths for RumourEval-2019 training and test data
 resource_path = Path('resource')
 train_path = resource_path / "rumoureval-2019-training-data.zip"
 test_path = resource_path / "rumoureval-2019-test-data.zip"
-test_label_path = resource_path / "final-eval-key.json" # evaluation file contains test labels
+test_label_path = resource_path / "final-eval-key.json" # Evaluation file contains test labels
 
 def load_data() -> (Dict, Dict, Dict, Dict, Dict, Dict, Dict, Dict, ZipFile, ZipFile):
+    # Function to parse .zip files based on the implementation by Ipek et al.
+    # (https://github.com/Institute-Web-Science-and-Technologies/CLEARumor ; state: 10.09.2019)
     def get_archive_directory_structure(archive: ZipFile) -> Dict:
         result = {}
         for file in archive.namelist():
@@ -42,28 +50,19 @@ def load_data() -> (Dict, Dict, Dict, Dict, Dict, Dict, Dict, Dict, ZipFile, Zip
     return train_data, dev_data, test_data, twitter_train_data, twitter_test_data, \
         reddit_train_data, reddit_dev_data, reddit_test_data, training_data_archive, \
         test_data_archive
-    
-def load_labels(train_data: Dict, dev_data: Dict, test_data: Dict) -> (Dict, Dict, list, list, list, int):
-    # load all labels (train/dev/test) into one dictionary as (sourceID:label)
-    # and all IDs for training and test data into two separate lists
-    labelDic, indexDic = {}, {} # labelDic contains all (eid,label) connections and indexDic contains (idx, eid) translation
-    # to make indexing more simple
-    eid = 1 # start indexing at one and assign each new tweet an index eid+=1        
+
+# Loads all labels (train/dev/test) into one dictionary as (sourceID:label)
+# and all IDs for training, dev and test data into three separate lists.
+def load_labels(train_data: Dict, dev_data: Dict, test_data: Dict) -> (Dict, list, list, list):
+    labelDic = {} # labelDic contains all (eid,label) connections.
     train_IDs, dev_IDs, test_IDs = [], [], []
     for (idx, label) in train_data['subtaskbenglish'].items():
-        indexDic[idx] = eid # keep connection between simple index and 18 digit index for look-ups later
-        labelDic[eid] = label.lower()
+        labelDic[idx] = label.lower()
         train_IDs.append(idx)
-        eid += 1 # increase index by one for the next tweet
     for (idx, label) in dev_data['subtaskbenglish'].items():
-        indexDic[idx] = eid
-        labelDic[eid] = label.lower()
+        labelDic[idx] = label.lower()
         dev_IDs.append(idx)
-        eid += 1
     for (idx, label) in test_data['subtaskbenglish'].items():
-        indexDic[idx] = eid
-        labelDic[eid] = label.lower()
+        labelDic[idx] = label.lower()
         test_IDs.append(idx)
-        eid += 1
-    highest_source_eid = eid # keep this value to continue counting upwards for simpler reply indices later
-    return labelDic, indexDic, train_IDs, dev_IDs, test_IDs, highest_source_eid
+    return labelDic, train_IDs, dev_IDs, test_IDs
